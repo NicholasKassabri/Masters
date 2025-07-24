@@ -6,6 +6,6 @@ Contents:
 
 1. Thesis – A cognitive modeling project examining strategic behavior and decision-making in zero-sum games using a minimalist architecture.
 
-2. Data Science Course Project – A project predicting loan default risk based on customer behavior. The project compares multiple classification models, including logistic regression, random forest, and artificial neural networks (ANNs), to evaluate performance and improve financial risk assessment.
+2. Data Science Course Project – A project predicting loan default risk based on customer behavior. 
 
 Each project has its own folder with a dedicated `README.md` that provides further details. 

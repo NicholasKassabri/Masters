@@ -457,7 +457,7 @@ def run_single_game(num_iterations):
     })
 
 
-    # Agent 1 checks Agent 2's move
+    # Agent 2 checks Agent 1's move
 
     def agent2_checks_agent1_move(memories):
         print('222222222222222222222222222222222222')

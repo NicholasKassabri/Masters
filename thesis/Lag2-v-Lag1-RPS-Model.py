@@ -3,6 +3,9 @@ from CMCed.Cognitive_Functions import *
 import pandas as pd
 import matplotlib.pyplot as plt
 
+#collect per-chunk utilities across all games/rounds
+all_chunk_utilities = []  # holds per-round, per-chunk utilities for both agents
+
 # Initialize individual memories for referee, agent1, and agent2
 
 def run_single_game(num_iterations):
@@ -91,11 +94,7 @@ def run_single_game(num_iterations):
     Agent2Productions = []
     ProceduralProductions = []
 
-
-   
-
     ####################################################################################################################
-
 
     # Start game production (Referee initiates the game)
     def start_game(memories):
@@ -175,6 +174,25 @@ def run_single_game(num_iterations):
         ref_mem['score_difference'] = ref_mem['agent1_score'] - ref_mem['agent2_score']
         print(f"Referee sees that Agent 1 played {agent1_choice} and Agent 2 played {agent2_choice}. {result}")
         print(f"Current Score - Agent 1: {ref_mem['agent1_score']}, Agent 2: {ref_mem['agent2_score']}, Draws: {ref_mem['draws']}")
+
+        #snapshot per-chunk utilities for this round (both agents)
+        curr_round = ref_mem['rounds_played']
+        for chunk_key, chunk_val in memories['agent1_declarative_memory'].items():
+            all_chunk_utilities.append({
+                'Game': num_iterations,
+                'Round': curr_round,
+                'Agent': 'Agent 1',
+                'Chunk': chunk_key,
+                'Utility': chunk_val['utility']
+            })
+        for chunk_key, chunk_val in memories['agent2_declarative_memory'].items():
+            all_chunk_utilities.append({
+                'Game': num_iterations,
+                'Round': curr_round,
+                'Agent': 'Agent 2',
+                'Chunk': chunk_key,
+                'Utility': chunk_val['utility']
+            })
 
         round_data = {
             'Round': ref_mem['rounds_played'],
@@ -327,7 +345,7 @@ def run_single_game(num_iterations):
         # Print the chunk description for clarity
         print("Extracted chunk description:", chunk_description)
         # Boost the utility
-        utility_change_by_description(memories, 'agent1_declarative_memory', chunk_description, amount=1, max_utility=10000)
+        utility_change_by_description(memories, 'agent1_declarative_memory', chunk_description, amount=15, max_utility=1000)
         # shift and update lag buffer for next guess
         memories['agent1_working_memory']['lag_buffer']['lag1'] = opponent_move
         memories['agent1_working_memory']['lag_buffer']['lag0'] = 'unknown'
@@ -455,7 +473,7 @@ def run_single_game(num_iterations):
         # Print the chunk description for clarity
         print("Extracted chunk description:", chunk_description)
         # Boost the utility
-        utility_change_by_description(memories, 'agent2_declarative_memory', chunk_description, amount=1, max_utility=10000)
+        utility_change_by_description(memories, 'agent2_declarative_memory', chunk_description, amount=1, max_utility=1000)
         # shift and update lag buffer for next guess
         memories['agent2_working_memory']['lag_buffer']['lag2'] = lag1
         memories['agent2_working_memory']['lag_buffer']['lag1'] = opponent_move
@@ -506,7 +524,7 @@ def run_single_game(num_iterations):
 
     # Run the cycle with custom parameters
 
-    ps.run_cycles(memories, AllProductionSystems, DelayResetValues, cycles=8000, millisecpercycle=10)
+    ps.run_cycles(memories, AllProductionSystems, DelayResetValues, cycles=12000, millisecpercycle=10)
 
             # Collect results into all_results
     game_results = pd.DataFrame(referee_working_memory['game_results'])
@@ -516,7 +534,7 @@ def run_single_game(num_iterations):
 all_results = []
 
     # Loop to run multiple games
-num_iterations = 10 # Number of games
+num_iterations = 2 # Number of games
 for i in range(1, num_iterations + 1):
     print(f"\n=== Starting Game {i} ===")
     run_single_game(i)
@@ -559,6 +577,16 @@ for _, row in game_averages.iterrows():
     print(f"      - Avg Agent 1 Utility: {row['Avg Agent 1 Utility']:.2f}")
     print(f"      - Avg Agent 2 Utility: {row['Avg Agent 2 Utility']:.2f}")
 
+#adds averaged chunk utilities
+chunk_util_df = pd.DataFrame(all_chunk_utilities)
+
+# Average utility per Agent × Chunk × Round across all games
+avg_chunk_util = (
+    chunk_util_df
+    .groupby(['Agent', 'Chunk', 'Round'], as_index=False)['Utility']
+    .mean()
+)
+
 # Save both the detailed results, per-game averages, and overall summary in one Excel file
 excel_filename = "Results.xlsx"
 with pd.ExcelWriter(excel_filename, engine="xlsxwriter") as writer:
@@ -600,7 +628,7 @@ for game_number in combined_results['Game'].unique():
 
     # Title and save
     plt.title(f'Score Difference and Utilities (Game {game_number})')
-    plt.savefig(f'Score Difference and Utilities{game_number}.png')  
+    plt.savefig(f'Score Difference and Utilities {game_number}.png')  
     plt.show()
 
 # Calculate the average score difference across all games
@@ -655,7 +683,74 @@ plt.grid(True)
 plt.savefig('score_difference_all_games.png')  
 plt.show()
 
+# Average per-chunk utility across ALL games (de-overlap equal values per round) ===
+# Requires: chunk_util_df built from all_chunk_utilities
 
+if 'chunk_util_df' in globals() and not chunk_util_df.empty:
+    # 1) Average by Agent × Chunk × Round across games
+    avg_chunk_util = (
+        chunk_util_df
+        .groupby(['Agent', 'Chunk', 'Round'], as_index=False)['Utility']
+        .mean()
+    )
+
+    def plot_avg_with_tie_jitter(agent_label, jitter_amplitude=0.4):
+        """
+        Plot all chunks on one figure with small vertical jitter applied
+        ONLY to ties (chunks that have the exact same value in a round).
+        jitter_amplitude is in 'utility' units (e.g., 0.4).
+        """
+        sub = avg_chunk_util[avg_chunk_util['Agent'] == agent_label]
+        if sub.empty:
+            return
+
+        pivot = sub.pivot(index='Round', columns='Chunk', values='Utility').sort_index()
+        rounds = list(pivot.index)
+        chunks = list(pivot.columns)
+
+        # Build adjusted series: for each round, separate chunks with identical values
+        adjusted = {chunk: [] for chunk in chunks}
+
+        for r in rounds:
+            # group chunks by their (possibly identical) value at this round
+            value_to_chunks = {}
+            for chunk in chunks:
+                val = pivot.at[r, chunk]
+                value_to_chunks.setdefault(val, []).append(chunk)
+
+            # assign small symmetric offsets within each tie group
+            for val, group in value_to_chunks.items():
+                m = len(group)
+                if m == 1:
+                    offsets = [0.0]
+                else:
+                    # spread offsets in [-0.5, +0.5], symmetric
+                    if m == 2:
+                        offsets = [-0.5, 0.5]
+                    else:
+                        step = 1.0 / (m - 1)  # 0..1
+                        offsets = [i * step - 0.5 for i in range(m)]
+                for chunk, off in zip(group, offsets):
+                    adjusted[chunk].append(val + jitter_amplitude * off)
+
+        # Plot
+        plt.figure(figsize=(12, 7))
+        for chunk in chunks:
+            plt.plot(rounds, adjusted[chunk], linewidth=1.4, alpha=0.95, label=chunk, marker='.', markersize=2)
+
+        plt.title(f'{agent_label} Chunk Utilities Over Rounds (Average Across Games)')
+        plt.xlabel('Round')
+        plt.ylabel('Average Utility')
+        plt.grid(True, alpha=0.3)
+        plt.legend(title='Chunk', bbox_to_anchor=(1.02, 1), loc='upper left', borderaxespad=0.)
+        plt.tight_layout()
+        outname = f'chunk_utilities_avg_{agent_label.replace(" ", "").lower()}_deoverlap.png'
+        plt.savefig(outname, dpi=300)
+        plt.show()
+
+    # Make the two figures (one per agent)
+    plot_avg_with_tie_jitter('Agent 1', jitter_amplitude=0.4)
+    plot_avg_with_tie_jitter('Agent 2', jitter_amplitude=0.4)
 
 
 

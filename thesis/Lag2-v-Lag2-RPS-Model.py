@@ -552,7 +552,7 @@ def run_single_game(num_iterations):
 
     # Run the cycle with custom parameters
 
-    ps.run_cycles(memories, AllProductionSystems, DelayResetValues, cycles=1000, millisecpercycle=10)
+    ps.run_cycles(memories, AllProductionSystems, DelayResetValues, cycles=12000, millisecpercycle=10)
 
             # Collect results into all_results
     game_results = pd.DataFrame(referee_working_memory['game_results'])
@@ -562,7 +562,7 @@ def run_single_game(num_iterations):
 all_results = []
 
     # Loop to run multiple games
-num_iterations = 1 # Number of games
+num_iterations = 2 # Number of games
 for i in range(1, num_iterations + 1):
     print(f"\n=== Starting Game {i} ===")
     run_single_game(i)
